@@ -41,7 +41,7 @@ def main(train_config):
     subset_d = train_config['subsets']
     for k in subset_d: 
         input_dict[k] = make_set_by_split(colon_df,subset_d[k],FEATURE_NAMES,config=train_config)
-    batch_size = train_config['batch_size']
+    batch_size = train_config['batch_size'] 
     ds_dict_source = {
     key: tf.data.Dataset.from_tensor_slices(
             (value['x'], value['y_one_hot'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 

@@ -86,6 +86,8 @@ def build_args():
     parser.add_argument("--run_param_search",type=bool,default=False,required=False)
     parser.add_argument("--seed",type=int,default=123) 
     parser.add_argument('--log_dir',type=str,required=True)
+    parser.add_argument('--w_weights',type=json.loads,required=False) 
+    parser.add_argument('--c_weights',type=json.loads,required=False)
     return parser
 
 def build_test_args(): 

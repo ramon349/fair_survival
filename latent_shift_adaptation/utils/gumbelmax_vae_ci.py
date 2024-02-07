@@ -22,9 +22,10 @@ from . import gumbelmax_vae
 import tensorflow as tf
 import pdb 
 from ...loss import my_survival_loss
-
+import numpy as np 
 EPS = 1e-5
 
+ce = tf.keras.losses.CategoricalCrossentropy()
 
 def mlp(input_shape, width, num_classes):
   """Multilabel Classification."""
@@ -68,8 +69,8 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       var_x=1.0,
       dims=None,
       pos=None,
-      xu2c_ex_mlp=False, 
-      xu2w_ex_mlp=False,
+      c_weights=None,
+      w_weights=None,
       **kwargs,
   ):
     """Constructor.
@@ -113,13 +114,32 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
 
     self.dims = dims
     self.pos = pos
+    self.c_weights = c_weights
+    self.w_weights = w_weights
+  
+  def make_weight_vector(self,yvals,cat='c'):  
+    if cat =='c': 
+      ws = [1/e for e in self.c_weights ] 
+    else: 
+      ws = [1/e for e in self.w_weights ]
+    if ws is None: 
+      return tf.ones(yvals.shape) 
+    else: 
+      vector = np.zeros((yvals.shape[0],1)) 
+      indeces = tf.argmax(yvals,axis=1)
+      for e in range(len(vector)): 
+        vector[e] = ws[indeces[e]]
+      vector = tf.convert_to_tensor(vector)
+      return vector
+
 
   def train_step(self, data):
     with tf.GradientTape() as tape:
       x, y, c, w ,t,e= self._parse_data(data)
       x_dim = tf.cast(tf.shape(x)[1], tf.float32)
       c_dim = tf.cast(tf.shape(c)[1], tf.float32)
-
+      c_weights = self.make_weight_vector(c,cat='c') 
+      w_weights = self.make_weight_vector(w,cat='w')
       u_logits = self.encoder(data)
       batch_len = tf.shape(u_logits)[0]
       u_logits = tf.reshape(u_logits, [batch_len, -1])  # reshape u_logits
@@ -148,14 +168,20 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       # multiply by n because x_loss is avrg over dimensions
       x_loss = ex_x_loss * 0.5 * x_dim
 
+      #w_loss = tf.reduce_mean(
+      #    tf.keras.losses.categorical_crossentropy(w, w_rec,sample_weight=w_weights)
+      #)
       w_loss = tf.reduce_mean(
-          tf.keras.losses.categorical_crossentropy(w, w_rec)
+          ce(w, w_rec,sample_weight=w_weights)
       )
 
       # multiply by c_dim because binary_crossentropy is avrg over all labels
       c_loss = tf.reduce_mean(
-              tf.keras.losses.categorical_crossentropy(c, c_rec)
+              ce(c, c_rec,sample_weight=c_weights)
           )
+      #c_loss = tf.reduce_mean(
+      #        tf.keras.losses.categorical_crossentropy(c, c_rec,sample_weight=c_weights)
+      #    )
       y_rec = tf.math.sigmoid(y_rec)
       surv_loss = my_survival_loss(y_rec,t,e)
       y_loss = surv_loss

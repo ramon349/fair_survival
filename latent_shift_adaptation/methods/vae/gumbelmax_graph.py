@@ -57,7 +57,9 @@ class Method(baseline.Method):
       evaluate=None,
       dtype=tf.float32,
       pos=None,
-      baselineHazards=None
+      baselineHazards=None,
+      c_weights=None,
+      w_weights=None
   ):  # pylint: disable=g-doc-args
     """Constructor.
 
@@ -134,6 +136,8 @@ class Method(baseline.Method):
         min_temp=min_temp,
         dims=dims,
         pos=pos,
+        c_weights=c_weights,
+        w_weights = w_weights
     )
 
     self.vae.compile(optimizer=vae_opt)
