@@ -1,7 +1,4 @@
-# hello 
-
-# sample 
-
-- ./helper_utils/colon_cancer_proc.py:21:#TODO: would be nice to define procesisng functions as objects that can handle data transforms
-- ./helper_utils/data_proc.py:8:    km.fit(train_df[time_col],train_df[event_col]) #TODO: change the colon script to pass in 
-- ./helper_utils/data_proc.py:61:    my_feat_dict['y_one_hot'] =  df['Event'].values.reshape(-1,1) #encoded[:,1].reshape(-1,1) #TODO check if you can revert to just having one column 
+- ./fair_survival/model_dist.py:143:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
+- ./fair_survival/model_dist.py:147:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
+- ./fair_survival/model_dist.py:172:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
+- ./fair_survival/train.py:48:        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff

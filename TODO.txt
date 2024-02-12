@@ -1,0 +1,5 @@
+./fair_survival/model_dist.py:    x_dim,c_dim,w_dim = get_dims(sample_data)#TODO: Refactor so this uses the source dictionary not the batched dataset
+./fair_survival/model_dist.py:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
+./fair_survival/model_dist.py:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
+./hiti_notebooks/step2_train_causal_surv_model.py:    pos.x, pos.y, pos.c, pos.w = 0, 1, 2, 3 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues
+./hiti_notebooks/step2_train_causal_surv_model.py:    pos.x, pos.y, pos.c, pos.w = 0, 1, 2, 3 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues
