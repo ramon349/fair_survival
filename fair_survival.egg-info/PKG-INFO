@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: fair-survival
+Version: 0.1
+Summary: research project
+Author: Ramon Luis Correa-Medero
+License: TBD
+Keywords: Deep Learning,Machine Learning,Survial Analysis
+Classifier: Development Status :: 0  Debug mode
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Environment :: Console
+Classifier: Programming Language :: Python :: 3.`0
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+
+- ./fair_survival/model_dist.py:143:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
+- ./fair_survival/model_dist.py:147:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
+- ./fair_survival/model_dist.py:172:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
+- ./fair_survival/train.py:48:        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff
