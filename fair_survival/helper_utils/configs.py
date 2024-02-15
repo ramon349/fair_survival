@@ -88,6 +88,7 @@ def build_args():
     parser.add_argument('--log_dir',type=str,required=True)
     parser.add_argument('--w_weights',type=json.loads,required=False) 
     parser.add_argument('--c_weights',type=json.loads,required=False)
+    parser.add_argument("--enc_y_loss",type=str,choices=['classification','survival'],required=False)
     return parser
 
 def build_test_args(): 

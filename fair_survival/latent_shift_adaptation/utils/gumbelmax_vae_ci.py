@@ -71,6 +71,7 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       pos=None,
       c_weights=None,
       w_weights=None,
+      enc_y_loss='survival',
       **kwargs,
   ):
     """Constructor.
@@ -116,6 +117,7 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
     self.pos = pos
     self.c_weights = c_weights
     self.w_weights = w_weights
+    self.enc_y_loss=enc_y_loss 
   
   def make_weight_vector(self,yvals,cat='c'):  
     if cat =='c': 
@@ -182,12 +184,15 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       #c_loss = tf.reduce_mean(
       #        tf.keras.losses.categorical_crossentropy(c, c_rec,sample_weight=c_weights)
       #    )
-      y_rec = tf.math.sigmoid(y_rec)
-      surv_loss = my_survival_loss(y_rec,t,e)
-      y_loss = surv_loss
-      #y_loss = tf.reduce_mean(
-      #    tf.keras.losses.categorical_crossentropy(y, y_rec)
-      #)
+      if self.enc_y_loss=='classification':
+        y_rec = tf.sigmoid(y_rec)
+        y_loss = tf.reduce_mean(
+         tf.keras.losses.binary_crossentropy(y, y_rec)
+         )
+      if self.enc_y_loss=='survival':
+        y_rec = tf.math.sigmoid(y_rec)
+        surv_loss = my_survival_loss(y_rec,t,e)
+        y_loss = surv_loss
 
       # kl loss
       pu = tf.reduce_mean(pu, axis=0)

@@ -175,5 +175,6 @@ def build_latent_shift_model(sample_data,config,train_d=None):
                     dims, latent_dim, None,
                     kl_loss_coef=kl_coeff,
                     num_classes=num_classes, evaluate=evaluate,
-                    dtype=tf.float32, pos=pos,baselineHazards=base_haz,c_weights=config['c_weights'],w_weights=config['w_weights'])
+                    dtype=tf.float32, pos=pos,baselineHazards=base_haz,c_weights=config['c_weights'],w_weights=config['w_weights'],
+                    enc_y_loss=config['enc_y_loss'])
     return clf 
