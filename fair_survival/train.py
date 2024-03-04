@@ -16,11 +16,9 @@ from .helper_utils import configs as  help_configs
 import numpy as np  
 from pathlib import Path 
 import os 
-tf.data.experimental.enable_debug_mode()
-
+from .helper_utils.data_proc import calculateBaselineHazard 
 def build_tr_dataset(dset,ds_dict,batch_size): 
     if dset=='mammo':
-        print('making mammo')
         ds_dict_source = {
         key: tf.data.Dataset.from_tensor_slices(
         (value['view_0'],value['view_1'],value['view_2'],value['view_3'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
@@ -109,22 +107,38 @@ def main(train_config):
         histories = pd.DataFrame(model.vae.history.history) 
         history_path = os.path.join(log_path,'causal_model_history.csv')
         histories.to_csv(history_path,index=False)
-    else: 
+    if model_name=='baseline':
+        weight_file = os.path.join(log_path,'model.h5')
+        val_batch_size = batch_size 
+        val_freq = 1 
+        val_data = ds_dict_source['val'].map(my_ret_func)
+        val_size = colon_df[colon_df['split']=='internal-val'].copy().shape[0]
+
+        callbacks = [tf.keras.callbacks.ModelCheckpoint(filepath=weight_file),tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=10)
+
+        ]
         train_kwargs = {
         'epochs':train_config['epochs'],
         'callbacks':callbacks,
         'steps_per_epoch':steps_per_epoch_train,
         'verbose':True,
+        'validation_batch_size':val_batch_size,
+        'validation_steps':val_size//val_batch_size,
+        'validation_freq':val_freq,
+        'validation_data':val_data
+
         }
-        model.fit(train_set,**train_kwargs,callbacks=None)
+        model.fit(train_set,**train_kwargs)
+    
     if model_name=='causal': 
         split_dfs = list() 
+
         for split in test_ds_dict_source.keys(): 
             predictions = list() 
             for encode_in in iter(test_ds_dict_source[split].map(get_x_only)):
                 hazard = model.predict_hazard(encode_in)
                 predictions.append(hazard)
-            all_preds= np.vstack(predictions)
+            all_preds= np.vstack(predictions) 
             for k in range(all_preds.shape[1]): 
                 input_dict[split][f'risk_{k}']= all_preds[:,k] 
             split_df = pred_dict_to_frame(input_dict[split],train_config) 
@@ -133,6 +147,28 @@ def main(train_config):
         test_df = pd.concat(split_dfs)
         csv_path = os.path.join(log_path,'model_infer.csv') 
         test_df.to_csv(csv_path,index=False) 
+    else: 
+        split_dfs = list() 
+        base_hazard =  calculateBaselineHazard(input_dict['train'],event_col='event',time_col='time_to_event') 
+        for split in test_ds_dict_source.keys(): 
+            predictions = list() 
+            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)): #TODO make it so that  we use the baseline hazard and adjust accordingly at inference time 
+                hazard = model.predict(encode_in)
+                predictions.append(hazard)
+            all_preds= np.vstack(predictions)
+            risk = np.exp(all_preds)
+            ht =  base_hazard*risk 
+            all_preds = 1-np.exp(-1*ht.cumsum(axis=1))
+            for k in range(all_preds.shape[1]): 
+                input_dict[split][f'risk_{k}']= all_preds[:,k]
+            split_df = pred_dict_to_frame(input_dict[split],train_config) 
+            split_df['split'] = split
+            split_dfs.append(split_df)
+        test_df = pd.concat(split_dfs)
+        csv_path = os.path.join(log_path,'model_infer.csv') 
+        test_df.to_csv(csv_path,index=False) 
+
+
     config_save_path = os.path.join(log_path,'orig_config.json') 
     with open(config_save_path,'w') as f : 
         json.dump(train_config,f)

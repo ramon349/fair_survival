@@ -9,7 +9,11 @@ Classifier: Development Status :: 0  Debug mode
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Environment :: Console
 Classifier: Programming Language :: Python :: 3.`0
+<<<<<<< HEAD
 Requires-Python: >=3.9
+=======
+Requires-Python: >=3.11
+>>>>>>> 62d169f3e8f9f76982fb02cf2d6c277c7ff26e0f
 Description-Content-Type: text/markdown
 
 - ./fair_survival/model_dist.py:143:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable

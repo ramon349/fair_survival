@@ -59,7 +59,8 @@ class Method(baseline.Method):
       pos=None,
       baselineHazards=None,
       c_weights=None,
-      w_weights=None
+      w_weights=None,
+      enc_y_loss='survival'
   ):  # pylint: disable=g-doc-args
     """Constructor.
 
@@ -137,7 +138,8 @@ class Method(baseline.Method):
         dims=dims,
         pos=pos,
         c_weights=c_weights,
-        w_weights = w_weights
+        w_weights = w_weights,
+        enc_y_loss=enc_y_loss
     )
 
     self.vae.compile(optimizer=vae_opt)
