@@ -10,12 +10,48 @@ import pandas as pd
 import tensorflow as tf
 import pdb 
 import pickle as pkl 
-from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only
+from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only,load_wrapper
 from .model_dist import model_factory 
 from .helper_utils import configs as  help_configs 
 import numpy as np  
 from pathlib import Path 
 import os 
+tf.data.experimental.enable_debug_mode()
+
+def build_tr_dataset(dset,ds_dict,batch_size): 
+    if dset=='mammo':
+        print('making mammo')
+        ds_dict_source = {
+        key: tf.data.Dataset.from_tensor_slices(
+        (value['view_0'],value['view_1'],value['view_2'],value['view_3'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
+        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in ds_dict.items() #TODO: I should update this shuffling stuff 
+        }
+        ds_dict_source = {k:v.map(load_wrapper) for k,v  in ds_dict_source.items()} 
+    else: 
+        ds_dict_source = {
+        key: tf.data.Dataset.from_tensor_slices(
+            (value['x'], value['y_one_hot'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
+        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in ds_dict.items() #TODO: I should update this shuffling stuff
+    } 
+    return ds_dict_source 
+
+def build_ts_dataset(dset,ds_dict,batch_size): 
+    if dset=='mammo':
+        ds_dict_source = {
+        key: tf.data.Dataset.from_tensor_slices(
+        (value['view_0'],value['view_1'],value['view_2'],value['view_3'],  value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
+        ).shuffle(batch_size*4).batch(batch_size) for key, value in ds_dict.items() #TODO: I should update this shuffling stuff 
+        }
+        ds_dict_source = {k:v.map(load_wrapper) for k,v in ds_dict_source.items()}   
+        
+    else: 
+        ds_dict_source = {
+        key: tf.data.Dataset.from_tensor_slices(
+            (value['x'], value['y_one_hot'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
+        ).shuffle(batch_size*4).batch(batch_size) for key, value in ds_dict_source.items() #TODO: I should update this shuffling stuff
+    } 
+    return ds_dict_source 
+
 def figure_version(log_dir): 
     logs = [i for i,e in enumerate(Path(log_dir).glob('run_*'))] 
     if len(logs)>0: 
@@ -39,28 +75,20 @@ def main(train_config):
     FEATURE_NAMES=train_config['feature_names'] 
     input_dict = {}
     subset_d = train_config['subsets']
-    for k in subset_d: 
-        input_dict[k] = make_set_by_split(colon_df,subset_d[k],FEATURE_NAMES,config=train_config)
-    batch_size = train_config['batch_size'] 
-    ds_dict_source = {
-    key: tf.data.Dataset.from_tensor_slices(
-            (value['x'], value['y_one_hot'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
-        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff
-    } 
-
-    test_ds_dict_source = {
-    key: tf.data.Dataset.from_tensor_slices(
-            (value['x'],value['time_to_event'],value['event']), 
-        ).batch(batch_size) for key, value in input_dict.items()
-
-    }
-    train_set = ds_dict_source['train'].map(my_ret_func)
-    num_examples =  (colon_df['split']=='internal-train').sum()
+    batch_size = train_config['batch_size']
+    for i,k in enumerate(subset_d): 
+        input_dict[k] = make_set_by_split(colon_df,k,FEATURE_NAMES,config=train_config)
+    pdb.set_trace()
+    ds_dict_source = build_tr_dataset("mammo",input_dict,batch_size)
+    test_ds_dict_source = build_ts_dataset("mammo",input_dict,batch_size)
+    train_set = ds_dict_source['train']#.map(load_wrapper)
+    outs = next(iter(train_set))
+    num_examples =  (colon_df['split']=='train').sum()
     steps_per_epoch_train = num_examples // batch_size
-    steps_per_epoch_val =   (colon_df['split']=='internal-val').sum()//batch_size
+    steps_per_epoch_val =   (colon_df['split']=='val').sum()//batch_size
 
     model_name = train_config['model_name']
-    model= model_factory(model_name=model_name,config=train_config,sample_data=input_dict['train']) 
+    model= model_factory(model_name=model_name,config=train_config,sample_data=train_set,train_d=colon_df[colon_df['split']=='train']) 
     reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
     monitor='loss', min_delta=0.01, factor=0.1, patience=20,
     min_lr=1e-12)
@@ -109,7 +137,7 @@ def main(train_config):
     with open(config_save_path,'w') as f : 
         json.dump(train_config,f)
 def pred_dict_to_frame(pred_dict,config): 
-    pid = config['patient_identifier'] 
+    pid = 'Study ID'
     cols = [pid]
     cols = cols + [e for e in pred_dict.keys() if e.startswith('risk_')]
     cols2copy = {e:pred_dict[e].reshape((-1,)) for e in cols}

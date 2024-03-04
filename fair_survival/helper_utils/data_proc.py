@@ -2,7 +2,7 @@ import tensorflow as tf
 from lifelines import KaplanMeierFitter
 import pdb 
 import numpy as np 
-
+import pickle as pkl 
 def calculateBaselineHazard(train_df,event_col='surv_1',time_col='surv_0') :
     km = KaplanMeierFitter()
     km.fit(train_df[time_col],train_df[event_col]) #TODO: change the colon script to pass in 
@@ -50,26 +50,59 @@ def get_dims(tr_dict):
     w_dim = tr_dict['w_one_hot'].shape[1]
     return x_dim,c_dim,w_dim
 def make_set_by_split(my_df,split,feat_names,config=None):
+    if config['dataset'] =='mammo':
+        return _make_set_by_split_mammo(my_df,split,config=config) 
+    else:
+        return _make_set_by_split_colon(my_df,split,feat_names,config=config) 
+
+def _make_set_by_split_mammo(my_df,split,config=None): 
     df = my_df[my_df['split']==split].copy()
     print(f"Split {split} has shape {df.shape[0]}")
     my_feat_dict= {} 
-    my_feat_dict['x'] = df[feat_names].values 
+    my_feat_dict['view_0'] =  df['view_0'] 
+    my_feat_dict['view_1'] =  df['view_1'] 
+    my_feat_dict['view_2'] =  df['view_2'] 
+    my_feat_dict['view_3'] =  df['view_3'] 
     event = df['Event'].values.reshape(-1,1)
     print(df['Event'].value_counts())
     not_event =  (event==0).astype(int)
     encoded = np.hstack((not_event,event)).astype(float)
-    my_feat_dict['y_one_hot'] =  df['Event'].values.reshape(-1,1) #encoded[:,1].reshape(-1,1) #TODO check if you can revert to just having one column 
-    my_feat_dict['w_one_hot'] = df[[e for e in df.keys() if e.startswith('center_')]] .values.astype(float)
-    my_feat_dict['c'] = df[[e for e in df.keys() if e.startswith('Stage_')]] .values.astype(float)
+    my_feat_dict['w_one_hot'] = df[[e for e in df.keys() if e.startswith('ETHNICITY_DESC_')]] .values.astype(float)
+    my_feat_dict['c'] = df[[e for e in df.keys() if e.startswith('densi_')]] .values.astype(float)
     my_feat_dict['time_to_event'] = df['Time to event'].values.reshape(-1,1).astype(float)
     my_feat_dict['event'] = df['Event'].values.reshape(-1,1).astype(float)
-    my_feat_dict['Study ID'] = df['Study ID'].values.reshape(-1,1)
+    my_feat_dict['Study ID'] = df['empi_anon'].values.reshape(-1,1)
     return my_feat_dict
+
 def get_dims_mammo(tr_dict): 
     #input sould be the tf batch dataset object. 
     # iteration is handeled inside my own code  
     sample = next(iter(tr_dict))
     x_dim = sample[0].shape[1]
-    c_dim =   sample[2].shape[1]
-    w_dim =  sample[3].shape[1]
+    c_dim =   sample[1].shape[1]
+    w_dim =  sample[2].shape[1]
     return x_dim,c_dim,w_dim
+def load_wrapper(v0,v1,v2,v3,density,ethnicity,time_to_event,event):  
+    obj = load_function(v0,v1,v2,v3)
+    te = tf.stack([time_to_event[:,0],tf.cast(event,tf.float64)[:,0]],axis=1)
+    return obj,event,density,ethnicity,time_to_event,event,te
+def load_wrapper_encoder(obj,surv,density,ethnicity,time_to_event,event,te): 
+    return obj
+def load_encoder_in(obj,surv,density,ethnicity,time_to_event,event,te): 
+    return obj
+def actual_loader(s): 
+    path = s.split(':')[0] 
+    idx = s.split(':')[1]
+    idx = int(idx)
+    with open(path,'rb') as f: 
+        stuff = pkl.load(f) 
+        obj = stuff['embed_acti'][idx]
+    return tf.constant(obj.numpy())
+@tf.py_function(Tout=tf.float32)
+def load_function(v0,v1,v2,v3):
+    v0_embd  = tf.stack([ actual_loader(e.decode('utf-8')) for e in v0.numpy()])
+    v1_embd  = tf.stack([ actual_loader(e.decode('utf-8')) for e in v1.numpy()])
+    v2_embd  = tf.stack([ actual_loader(e.decode('utf-8')) for e in v2.numpy()])
+    v3_embd  = tf.stack([ actual_loader(e.decode('utf-8')) for e in v3.numpy()])
+    my_embeddings = tf.concat([v0_embd,v1_embd,v2_embd,v3_embd],axis=-1)
+    return my_embeddings
