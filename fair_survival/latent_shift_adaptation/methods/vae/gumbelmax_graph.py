@@ -390,6 +390,27 @@ class Method(baseline.Method):
     y_pred = result_temp / result_temp.sum(axis=-1, keepdims=True)
     return y_pred
 
+  def predict_realign(self,data_source_train,data_source_val,data_target,steps_per_epoch_val,fit_kwargs):
+    self.freq_ratio = self._get_freq_ratio(
+        data_source_val, data_target, steps_per_epoch_val
+    )
+    # fit p(y|x,u).
+    tf.keras.backend.set_value(
+        self.model_xu2y.optimizer.learning_rate, self.start_lr_xu2y
+    )
+    #ds_xu2y = data_source_train.map(self.xu2y)
+    self.model_xu2y.trainable = True
+    ds_xu2y = data_source_train.map(self.xu2y_time)
+    xu2y_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
+    xu2y_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
+    print("training xu2y model")
+    self.model_xu2y.fit(ds_xu2y,**xu2y_fit_kwargs) 
+    print(" done training xu2y model")
+    print("Training claibration model")
+    self._calibrate(data_source_val, "xu2y", **fit_kwargs)
+    print("Done training calibration model")
+    self.model_xu2y.trainable = False
+
   def predict_mult(self, data, num_batches, **kwargs):
     """Predict target Y from the TF dataset directly. See also: predict()."""
     y_true = []

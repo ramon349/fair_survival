@@ -1,5 +1,4 @@
-- ./fair_survival/model_dist.py:143:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
-- ./fair_survival/model_dist.py:147:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
-- ./fair_survival/model_dist.py:172:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
-- ./fair_survival/train.py:49:        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff
-- ./fair_survival/train.py:130:            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)): #TODO make it so that  we use the baseline hazard and adjust accordingly at inference time 
+- ./fair_survival/model_dist.py:152:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
+- ./fair_survival/model_dist.py:156:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
+- ./fair_survival/model_dist.py:181:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
+- ./fair_survival/train.py:167:            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)): #TODO make it so that  we use the baseline hazard and adjust accordingly at inference time 

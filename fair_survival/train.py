@@ -1,28 +1,23 @@
 import pandas as pd
 import tensorflow as tf
-from sklearn.preprocessing import StandardScaler
-import optuna as opt 
 import tensorflow as tf
-import pickle as pkl 
 from fair_survival.helper_utils.colon_cancer_proc import processor as colon_data_processor
 import json 
 import pandas as pd 
 import tensorflow as tf
-import pdb 
 import pickle as pkl 
 from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only
 from .model_dist import model_factory 
 from .helper_utils import configs as  help_configs 
 import numpy as np  
-from pathlib import Path 
 import os 
 from .helper_utils.data_proc import calculateBaselineHazard 
+import matplotlib.pyplot as plt 
+import pdb 
+import optuna  as opt 
+
 def figure_version(log_dir): 
-    logs = [i for i,e in enumerate(Path(log_dir).glob('run_*'))] 
-    if len(logs)>0: 
-        ver = logs[-1] +1
-    else: 
-        ver = 0 
+    ver = 0 
     log_path = os.path.join(log_dir,f'run_{ver}')
     os.makedirs(log_path,exist_ok=True)
     return log_path
@@ -30,7 +25,21 @@ def figure_version(log_dir):
 def  is_survivor(*args,key_val=0): 
     val_com = args[-1]==key_val
     return val_com
-def main(train_config): 
+def build_optuna_params(param,trial): 
+    param['batch_size']= trial.suggest_int("batch_size",2,512,2)
+    param['learning_rate'] = trial.suggest_float("learning_rate",0.0001,0.1)
+    param['hidden_dim'] = trial.suggest_int("hidden_dim",4,12,1) 
+    return param
+def main(in_config,trial=None): 
+
+    if trial: 
+        #do stuff 
+        train_config = build_optuna_params(in_config.copy(),trial)
+        verbose =0 
+    else: 
+        train_config = in_config
+        verbose = 1
+
     SEED = train_config['seed']
     tf.random.set_seed(SEED)
     np.random.seed(SEED)
@@ -43,11 +52,15 @@ def main(train_config):
     for k in subset_d: 
         input_dict[k] = make_set_by_split(colon_df,subset_d[k],FEATURE_NAMES,config=train_config)
     batch_size = train_config['batch_size'] 
-    ds_dict_source = {
-    key: tf.data.Dataset.from_tensor_slices(
-            (value['x'], value['y_one_hot'], value['c'], value['w_one_hot'],value['time_to_event'],value['event']), 
-        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff
-    } 
+
+    #creating dsets  
+    ds_dict_source = dict() 
+    for key,value in input_dict.items():
+        if key=='val':
+            m_batch = 124
+        else: 
+            m_batch = batch_size
+        ds_dict_source[key] = tf.data.Dataset.from_tensor_slices((value['x'],value['y_one_hot'],value['c'],value['w_one_hot'],value['time_to_event'],value['event'])).repeat().shuffle(m_batch*4).batch(m_batch)
 
     test_ds_dict_source = {
     key: tf.data.Dataset.from_tensor_slices(
@@ -58,15 +71,17 @@ def main(train_config):
     train_set = ds_dict_source['train'].map(my_ret_func)
     num_examples =  (colon_df['split']=='internal-train').sum()
     steps_per_epoch_train = num_examples // batch_size
-    steps_per_epoch_val =   (colon_df['split']=='internal-val').sum()//batch_size
+    steps_per_epoch_val =   (colon_df['split']=='internal-val').sum()//124
 
     model_name = train_config['model_name']
     model= model_factory(model_name=model_name,config=train_config,sample_data=input_dict['train']) 
-    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-    monitor='loss', min_delta=0.01, factor=0.1, patience=20,
-    min_lr=1e-12)
-    callbacks = [reduce_lr]
+    weight_file = os.path.join(log_path,'model.h5')
     if model_name=='causal': 
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='x_loss', min_delta=0.01, factor=0.01, patience=3,
+        min_lr=1e-12,verbose=True)
+        weight_file = os.path.join(log_path,'model.h5')
+        callbacks = [reduce_lr]
         train_kwargs = {
         'steps_per_epoch':steps_per_epoch_train,
         'stpes_per_epoch_val':steps_per_epoch_val,
@@ -84,27 +99,40 @@ def main(train_config):
         histories.to_csv(history_path,index=False)
     if model_name=='baseline':
         weight_file = os.path.join(log_path,'model.h5')
-        val_batch_size = batch_size 
+        val_batch_size = 124
         val_freq = 1 
         val_data = ds_dict_source['val'].map(my_ret_func)
         val_size = colon_df[colon_df['split']=='internal-val'].copy().shape[0]
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss', min_delta=0.01, factor=0.1, patience=10,
+        min_lr=1e-12)
+        callbacks = [reduce_lr] 
+        if trial is None: 
+            callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath=weight_file,monitor='val_loss',save_best_only=True,save_weights_only=True,save_freq='epoch',verbose=1))
 
-        callbacks = [tf.keras.callbacks.ModelCheckpoint(filepath=weight_file),tf.keras.callbacks.EarlyStopping(monitor='val_loss',patience=10)
-
-        ]
         train_kwargs = {
         'epochs':train_config['epochs'],
         'callbacks':callbacks,
         'steps_per_epoch':steps_per_epoch_train,
-        'verbose':True,
+        'verbose':verbose,
         'validation_batch_size':val_batch_size,
         'validation_steps':val_size//val_batch_size,
         'validation_freq':val_freq,
         'validation_data':val_data
 
-        }
-        model.fit(train_set,**train_kwargs)
-    
+        } 
+        history = model.fit(train_set,**train_kwargs)
+        plt.figure(dpi=300)
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.legend(['train Loss','Val Loss'])
+        if trial is None: 
+            plt.savefig(os.path.join(log_path,'train_graph.png'))
+            model.load_weights(weight_file)
+        val_loss = min(history.history['val_loss'])
+    if trial:  
+        return val_loss 
+
     if model_name=='causal': 
         split_dfs = list() 
 
@@ -142,11 +170,12 @@ def main(train_config):
         test_df = pd.concat(split_dfs)
         csv_path = os.path.join(log_path,'model_infer.csv') 
         test_df.to_csv(csv_path,index=False) 
-
-
-    config_save_path = os.path.join(log_path,'orig_config.json') 
-    with open(config_save_path,'w') as f : 
-        json.dump(train_config,f)
+    if trial is None: 
+        config_save_path = os.path.join(log_path,'orig_config.json') 
+        with open(config_save_path,'w') as f : 
+            json.dump(train_config,f)
+    else: 
+        return val_loss
 def pred_dict_to_frame(pred_dict,config): 
     pid = config['patient_identifier'] 
     cols = [pid]
@@ -155,9 +184,11 @@ def pred_dict_to_frame(pred_dict,config):
     copy_df = pd.DataFrame(cols2copy) 
     return copy_df
 def _parse(): 
-    conf = help_configs.get_params() 
+    conf = help_configs.get_params()  
     if conf['run_param_search']: 
-        raise NotImplemented("Working on it")
+        study = opt.create_study("sqlite:///my_param_search.db",study_name='search',direction='minimize',load_if_exists=True)
+        wrap_main = lambda x: main(conf,x)
+        study.optimize(wrap_main,n_trials=100) 
     else: 
         main(conf)
 if __name__=='__main__':

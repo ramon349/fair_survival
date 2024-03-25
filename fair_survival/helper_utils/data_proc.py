@@ -51,11 +51,9 @@ def get_dims(tr_dict):
     return x_dim,c_dim,w_dim
 def make_set_by_split(my_df,split,feat_names,config=None):
     df = my_df[my_df['split']==split].copy()
-    print(f"Split {split} has shape {df.shape[0]}")
     my_feat_dict= {} 
     my_feat_dict['x'] = df[feat_names].values 
     event = df['Event'].values.reshape(-1,1)
-    print(df['Event'].value_counts())
     not_event =  (event==0).astype(int)
     encoded = np.hstack((not_event,event)).astype(float)
     my_feat_dict['y_one_hot'] =  df['Event'].values.reshape(-1,1) #encoded[:,1].reshape(-1,1) #TODO check if you can revert to just having one column 
@@ -65,6 +63,22 @@ def make_set_by_split(my_df,split,feat_names,config=None):
     my_feat_dict['event'] = df['Event'].values.reshape(-1,1).astype(float)
     my_feat_dict['Study ID'] = df['Study ID'].values.reshape(-1,1)
     return my_feat_dict
+def make_set_by_hospital(my_df,center,feat_names): 
+    df = my_df[my_df['center']==center].copy()
+    print(df.shape[0])
+    my_feat_dict= {} 
+    my_feat_dict['x'] = df[feat_names].values 
+    event = df['Event'].values.reshape(-1,1)
+    not_event =  (event==0).astype(int)
+    encoded = np.hstack((not_event,event)).astype(float)
+    my_feat_dict['y_one_hot'] =  df['Event'].values.reshape(-1,1) #encoded[:,1].reshape(-1,1) #TODO check if you can revert to just having one column 
+    my_feat_dict['w_one_hot'] = df[[e for e in df.keys() if e.startswith('center_')]] .values.astype(float)
+    my_feat_dict['c'] = df[[e for e in df.keys() if e.startswith('Stage_')]] .values.astype(float)
+    my_feat_dict['time_to_event'] = df['Time to event'].values.reshape(-1,1).astype(float)
+    my_feat_dict['event'] = df['Event'].values.reshape(-1,1).astype(float)
+    my_feat_dict['Study ID'] = df['Study ID'].values.reshape(-1,1)
+    return my_feat_dict
+
 def get_dims_mammo(tr_dict): 
     #input sould be the tf batch dataset object. 
     # iteration is handeled inside my own code  

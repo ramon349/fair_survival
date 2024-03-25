@@ -55,16 +55,17 @@ class Survial_Model(object):
         self.test = self.encode(testdf)
         #self.train = traindf
         #self.test = testdf
-        df_stage_train = self.train[['Stage','MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
+        df_stage_train = self.train[['MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
                                 '%Mucin within tumor','%necrosis within tumor bed','%TB/PDC within tumor','Tumor:Stroma Ratio',
                                 'TILs per mm2 tumor','%High-grade','%SRCC','%Immature within tumor bed','%inflammatory within tumor bed',
                                 '%mature within tumor bed','%immature within stromal region','%inflammatory within stromal region','%mature within stromal region',
                                 'Time to event', 'Event']]
-        df_stage_test = self.test[['Stage','MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
+        df_stage_test = self.test[['MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
                                 '%Mucin within tumor','%necrosis within tumor bed','%TB/PDC within tumor','Tumor:Stroma Ratio',
                                 'TILs per mm2 tumor','%High-grade','%SRCC','%Immature within tumor bed','%inflammatory within tumor bed',
                                 '%mature within tumor bed','%immature within stromal region','%inflammatory within stromal region','%mature within stromal region',
                                 'Time to event', 'Event']]
+
 
         self.cox_model =  CoxPHFitter(alpha = 0.1, l1_ratio = 0.5)
         self.cox_model.fit(df_stage_train, 'Time to event', event_col='Event', fit_options={'step_size':1})

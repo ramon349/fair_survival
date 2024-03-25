@@ -5,37 +5,33 @@ from fair_survival.helper_utils.data_proc import get_dims,get_dims_mammo
 import ml_collections as mlc 
 from  .helper_utils.data_proc import calculateBaselineHazard
 from .latent_shift_adaptation.methods.vae import gumbelmax_graph
+from tensorflow.keras.regularizers import L1L2
+import keras 
 DEFAULT_LOSS = tf.keras.losses.BinaryCrossentropy(from_logits=True) 
 import pdb 
 
 def model_factory(model_name,config=None,sample_data=None): 
     if model_name=='baseline': 
-        return get_baseline_model() 
+        return get_baseline_model(config=config) 
     if model_name=='causal': 
         return build_latent_shift_model(sample_data=sample_data,config=config)
     raise ValueError("Incorrect Model name")
-def get_baseline_model(load_path=None):
+def get_baseline_model(load_path=None,config=None):
     #defining model graph 
-    model_input = tf.keras.Input(shape=(15,))
+    num_feats = len(config['feature_names'])
+    model_input = tf.keras.Input(shape=(num_feats,))
     x = model_input
+    dim_hidden = config['hidden_dim']
     #Block 1
-    x= tf.keras.layers.Dense(6,activation=None)(x)
-    x = tf.keras.layers.ReLU()(x)
-    x= tf.keras.layers.BatchNormalization(epsilon=1e-5,momentum=0.1)(x)
-    x=tf.keras.layers.Dropout(rate=0.024)(x)
-    #block2
-    x = tf.keras.layers.Dense(3,activation=None)(x)
-    x = tf.keras.layers.ReLU()(x)
-    x= tf.keras.layers.BatchNormalization(epsilon=1e-5,momentum=0.1)(x)
-    x= tf.keras.layers.Dropout(rate=0.024)(x)
-    #prediciton head 
-    model_output = tf.keras.layers.Dense(1,activation=None)(x)
+    x= tf.keras.layers.Dense(dim_hidden,activation='relu')(x)
+    x= tf.keras.layers.Dropout(0.02)(x)
+    model_output = tf.keras.layers.Dense(1,activation='linear',kernel_regularizer=L1L2(l1=0.5,l2=0.5))(x)
     #optimizers  and losses 
-    opt = tf.keras.optimizers.Adam(learning_rate=0.01) 
+    opt = tf.keras.optimizers.Adam(learning_rate= config['learning_rate']) 
     model = tf.keras.models.Model(model_input,model_output)
     model.compile(optimizer=opt,loss=loss_funcs.SurvivalLoss())
     if load_path: 
-        model.load_weights(load_path)
+        model.load_weights(load_path)   
     return model 
 
 def mlp(num_classes, width, input_shape, learning_rate,
@@ -52,7 +48,7 @@ def mlp(num_classes, width, input_shape, learning_rate,
   model_outuput = tf.keras.layers.Dense(num_classes,
                                         use_bias=True,
                                         activation="linear")(x)  # get logits
-  opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9)
+  opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
   model = tf.keras.models.Model(model_input, model_outuput)
   model.build(input_shape)
   model.compile(loss=loss, optimizer=opt, metrics=metrics)
@@ -63,17 +59,30 @@ def build_x2u(num_classes,width,input_shape,learning_rate,loss=DEFAULT_LOSS,metr
   x = tf.keras.layers.Dense(width,use_bias=True,activation='relu')(model_input)
   x = tf.keras.layers.Dense(12,use_bias=True,activation='relu')(x)
   model_output = tf.keras.layers.Dense(num_classes,use_bias=True,activation='linear')(x) 
-  opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=0.9)
+  opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
   model = tf.keras.models.Model(model_input, model_output)
   model.build(input_shape)
   model.compile(loss=loss, optimizer=opt, metrics=metrics)
   return model 
 
 
-def mlp_time(input_shape):
-    model = get_model(input_shape)  
+def mlp_time(input_shape,config=None):
+    model = get_model(input_shape,config=config)  
     return model 
-def get_model(input_shape):
+def get_model(input_shape,config=None):
+    #defining model graph 
+    model_input = tf.keras.Input(shape=(input_shape,))
+    x = model_input
+    #Block 1
+    x= tf.keras.layers.Dense(13,activation='relu')(x)
+    x = tf.keras.layers.Dense(8,activation='relu')(x)
+    model_output = tf.keras.layers.Dense(1,activation='linear',kernel_regularizer=L1L2(l1=0.5,l2=0.5))(x)
+    #optimizers  and losses 
+    opt = keras.optimizers.Adam(learning_rate=config['learning_rate'],clipnorm=2) 
+    model = tf.keras.models.Model(model_input,model_output)
+    model.compile(optimizer=opt,loss=loss_funcs.SurvivalLoss())
+    return model 
+def old_get_model(input_shape):
     #defining model graph 
     model_input = tf.keras.Input(shape=(input_shape,))
     x = model_input
@@ -147,10 +156,10 @@ def build_latent_shift_model(sample_data,config,train_d=None):
             metrics=['accuracy']) #TODO: Why is accruacy a metric here
 
     model_x2u = mlp(num_classes=latent_dim, width=width, input_shape=(x_dim,),
-                    learning_rate=0.01,
+                    learning_rate=learning_rate,
                     metrics=['accuracy'])
     if config['dataset']=='colon':
-        model_xu2y = mlp_time(input_shape=(x_dim+latent_dim))
+        model_xu2y = mlp_time(input_shape=(x_dim+latent_dim),config=config)
     if config['dataset']=='mammo': 
         model_xu2y = get_model_time_mammo(input_dim=(x_dim+latent_dim))
     vae_opt = tf.keras.optimizers.RMSprop(learning_rate=learning_rate)

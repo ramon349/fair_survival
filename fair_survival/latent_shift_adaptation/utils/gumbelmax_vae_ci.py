@@ -25,7 +25,7 @@ from ...loss import my_survival_loss
 import numpy as np 
 EPS = 1e-5
 
-ce = tf.keras.losses.CategoricalCrossentropy()
+ce = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
 
 def mlp(input_shape, width, num_classes):
   """Multilabel Classification."""
@@ -158,8 +158,8 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
 
       x_and_u = tf.concat([x, u], axis=1)
       c_rec = self.decoder_ux2c(x_and_u)
-      c_rec = tf.math.softmax(c_rec)
-      #c_rec = tf.math.sigmoid(c_rec)  # multi-label
+      #c_rec = tf.math.softmax(c_rec)
+      c_rec = tf.math.sigmoid(c_rec)  # multi-label
 
       c_and_u = tf.concat([c, u], axis=1)
       y_rec = self.decoder_uc2y(c_and_u)
@@ -180,7 +180,7 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       # multiply by c_dim because binary_crossentropy is avrg over all labels
       c_loss = tf.reduce_mean(
               ce(c, c_rec,sample_weight=c_weights)
-          )
+      )
       #c_loss = tf.reduce_mean(
       #        tf.keras.losses.categorical_crossentropy(c, c_rec,sample_weight=c_weights)
       #    )
