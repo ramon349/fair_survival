@@ -6,7 +6,7 @@ import json
 import pandas as pd 
 import tensorflow as tf
 import pickle as pkl 
-from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only
+from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only,make_set_by_hospital
 from .model_dist import model_factory 
 from .helper_utils import configs as  help_configs 
 import numpy as np  
@@ -68,6 +68,14 @@ def main(in_config,trial=None):
         ).batch(batch_size) for key, value in input_dict.items()
 
     }
+    centers = ['Ontario', 'Australia', 'Hawaii', 'Seattle', 'Mayo', 'UPMC','ACCESS', 'Mt. Sinai']
+    center_ds_dict_source = dict() 
+    for c in centers: 
+        center_ds_dict_source[c] = make_set_by_hospital(colon_df,c,feat_names=FEATURE_NAMES) 
+    center_ts_ds = {
+        key:tf.data.Dataset.from_tensor_slices(
+
+            (value['x'],value['y_one_hot'],value['c'],value['w_one_hot'],value['time_to_event'],value['event'])).batch(batch_size) for key,value in input_dict.items()}
     train_set = ds_dict_source['train'].map(my_ret_func)
     num_examples =  (colon_df['split']=='internal-train').sum()
     steps_per_epoch_train = num_examples // batch_size
@@ -135,10 +143,11 @@ def main(in_config,trial=None):
 
     if model_name=='causal': 
         split_dfs = list() 
-
-        for split in test_ds_dict_source.keys(): 
-            predictions = list() 
-            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)):
+        val_steps=  steps_per_epoch_val
+        for split in center_ts_ds.keys(): 
+            predictions = list()  
+            model.predict_realign(ds_dict_source['train'],ds_dict_source['val'],center_ts_ds[split],val_steps,train_kwargs)
+            for encode_in in iter(center_ts_ds[split].map(get_x_only)):
                 hazard = model.predict_hazard(encode_in)
                 predictions.append(hazard)
             all_preds= np.vstack(predictions) 
