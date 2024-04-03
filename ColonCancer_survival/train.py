@@ -8,7 +8,7 @@ import scipy.stats as st
 import random
 from lifelines import CoxPHFitter
 import sys
-
+import pdb 
 
 
 
@@ -22,18 +22,6 @@ class Survial_Model(object):
         return int(T/2)*2
     def encode(self, train):
         ## Time to event till 4 years - 48 months
-        T = []
-        E = []
-
-        for i in range(train.shape[0]):
-            if train.iloc[i]['Time to recurrence or last follow-up (months)'] < 60: # 5 years
-                T.append(self.convert_3months(train.iloc[i]['Time to recurrence or last follow-up (months)']))
-                E.append(train.iloc[i]['Recurrence status at last F/up, 0=No recurrence, 1=recurrence'])
-            else:
-                T.append(60)
-                E.append(0)
-        train['Event'] = E
-        train['Time to event'] = T
         train = train.drop(['Time to recurrence or last follow-up (months)', 'Recurrence status at last F/up, 0=No recurrence, 1=recurrence'], axis=1)
         return train
 
@@ -90,7 +78,7 @@ class Survial_Model(object):
             self.test = self.encode(testdf)
             #self.test = testdf
             
-            df_stage_test = self.test[['Stage','MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
+            df_stage_test = self.test[['MMR status, 0=MMRP, 0=MMRD','%Tumor within tumor bed','%Stroma within tumor bed',
                                 '%Mucin within tumor','%necrosis within tumor bed','%TB/PDC within tumor','Tumor:Stroma Ratio',
                                 'TILs per mm2 tumor','%High-grade','%SRCC','%Immature within tumor bed','%inflammatory within tumor bed',
                                 '%mature within tumor bed','%immature within stromal region','%inflammatory within stromal region','%mature within stromal region',

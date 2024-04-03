@@ -27,10 +27,10 @@ EPS = 1e-5
 
 ce = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
 
-def mlp(input_shape, width, num_classes):
+def mlp(input_shape, width, num_classes,use_reg=None):
   """Multilabel Classification."""
   model_input = tf.keras.Input(shape=input_shape)
-  regularizer = tf.keras.regularizers.L2(1e-6)
+  regularizer = tf.keras.regularizers.L1L2(0.5,0.5) if use_reg else None 
   # hidden layer
   if width:
     x = tf.keras.layers.Dense(
@@ -106,19 +106,21 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
         pos,
         **kwargs,
     )
-
     x_dim, y_dim, c_dim, w_dim = dims["x"], dims["y"], dims["c"], dims["w"]
     self.decoder_u2x = mlp((latent_dim,), width, x_dim)
     self.decoder_u2w = mlp((latent_dim,), width, w_dim)
     self.decoder_ux2c = mlp((latent_dim + x_dim,), width, c_dim)
     self.decoder_uc2y = mlp((latent_dim + c_dim,), width, y_dim)
-
     self.dims = dims
     self.pos = pos
     self.c_weights = c_weights
     self.w_weights = w_weights
     self.enc_y_loss=enc_y_loss 
-  
+    self.set_class_metrics()
+  def set_class_metrics(self):
+    self.c_auc= tf.keras.metrics.AUC(name='concept_auc')
+    self.w_auc = tf.keras.metrics.AUC(name='proxy_auc')
+    
   def make_weight_vector(self,yvals,cat='c'):  
     if cat =='c': 
       ws = [1/e for e in self.c_weights ] 
@@ -214,10 +216,12 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
     )
 
     # track metrics
+    self.c_auc.update_state(c,c_rec) 
+    self.w_auc.update_state(w,w_rec)
     self.total_loss_tracker.update_state(total_loss)
     self.reconstruction_loss_tracker.update_state(reconstruction_loss)
     self.kl_loss_tracker.update_state(kl_loss)
-    self.x_loss_tracker.update_state(x_loss)
+    self.x_loss_tracker.update_state(tf.keras.losses.mean_squared_error(x, x_rec) )
     self.y_loss_tracker.update_state(y_loss)
     self.c_loss_tracker.update_state(c_loss)
     self.w_loss_tracker.update_state(w_loss)
@@ -229,4 +233,97 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
         "c_loss": self.c_loss_tracker.result(),
         "w_loss": self.w_loss_tracker.result(),
         "y_loss": self.y_loss_tracker.result(),
+        "c_auc":self.c_auc.result(),
+        "w_auc":self.w_auc.result()
     }
+  def test_step(self,data):
+      x, y, c, w ,t,e= self._parse_data(data)
+      x_dim = tf.cast(tf.shape(x)[1], tf.float32)
+      c_dim = tf.cast(tf.shape(c)[1], tf.float32)
+      c_weights = self.make_weight_vector(c,cat='c') 
+      w_weights = self.make_weight_vector(w,cat='w')
+      u_logits = self.encoder(data)
+      batch_len = tf.shape(u_logits)[0]
+      u_logits = tf.reshape(u_logits, [batch_len, -1])  # reshape u_logits
+      pu = tf.math.softmax(u_logits)  # prob over categorical latent space
+      # add Gumbel noise
+      u = gumbelmax_vae.Sampling()(u_logits, self.temp)
+      u = tf.math.softmax(u)
+
+      # reconstruction loss
+      x_rec = self.decoder_u2x(u)
+
+      w_rec = self.decoder_u2w(u)
+      w_rec = tf.math.softmax(w_rec)  # one-hot encoded so use softmax
+
+      x_and_u = tf.concat([x, u], axis=1)
+      c_rec = self.decoder_ux2c(x_and_u)
+      #c_rec = tf.math.softmax(c_rec)
+      c_rec = tf.math.sigmoid(c_rec)  # multi-label
+
+      c_and_u = tf.concat([c, u], axis=1)
+      y_rec = self.decoder_uc2y(c_and_u)
+
+      ex_x_loss = tf.math.log(self.var_x) + 1.0 / self.var_x * tf.reduce_mean(
+          tf.keras.losses.mean_squared_error(x, x_rec)  # x loss per example
+      )
+      # multiply by n because x_loss is avrg over dimensions
+      x_loss = ex_x_loss * 0.5 * x_dim
+
+      #w_loss = tf.reduce_mean(
+      #    tf.keras.losses.categorical_crossentropy(w, w_rec,sample_weight=w_weights)
+      #)
+      w_loss = tf.reduce_mean(
+          ce(w, w_rec,sample_weight=w_weights)
+      )
+
+      # multiply by c_dim because binary_crossentropy is avrg over all labels
+      c_loss = tf.reduce_mean(
+              ce(c, c_rec,sample_weight=c_weights)
+      )
+      #c_loss = tf.reduce_mean(
+      #        tf.keras.losses.categorical_crossentropy(c, c_rec,sample_weight=c_weights)
+      #    )
+      if self.enc_y_loss=='classification':
+        y_rec = tf.sigmoid(y_rec)
+        y_loss = tf.reduce_mean(
+         tf.keras.losses.binary_crossentropy(y, y_rec)
+         )
+      if self.enc_y_loss=='survival':
+        y_rec = tf.math.sigmoid(y_rec)
+        surv_loss = my_survival_loss(y_rec,t,e)
+        y_loss = surv_loss
+
+      # kl loss
+      pu = tf.reduce_mean(pu, axis=0)
+      log_p = tf.math.log(pu + EPS)
+      kl_loss = tf.math.multiply(pu, log_p - self.log_prior)
+      kl_loss = tf.reduce_sum(kl_loss)
+
+      self.c_auc.update_state(c,c_rec) 
+      self.w_auc.update_state(w,w_rec)
+      # total loss
+      reconstruction_loss = x_loss + w_loss + c_loss + y_loss
+      total_loss = reconstruction_loss + self.kl_loss_coef * kl_loss
+      self.total_loss_tracker.update_state(total_loss)
+      self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+      self.kl_loss_tracker.update_state(kl_loss)
+      self.x_loss_tracker.update_state(tf.keras.losses.mean_squared_error(x, x_rec) )
+      self.y_loss_tracker.update_state(y_loss)
+      self.c_loss_tracker.update_state(c_loss)
+      self.w_loss_tracker.update_state(w_loss)
+      return {
+          "loss": self.total_loss_tracker.result(),
+          "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+          "kl_loss": self.kl_loss_tracker.result(),
+          "x_loss": self.x_loss_tracker.result(),
+          "c_loss": self.c_loss_tracker.result(),
+          "w_loss": self.w_loss_tracker.result(),
+          "y_loss": self.y_loss_tracker.result(),
+          "c_auc":self.c_auc.result(),
+          "w_auc":self.w_auc.result()
+      }
+
+
+
+

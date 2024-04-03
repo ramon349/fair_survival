@@ -1,11 +1,10 @@
 import pandas as pd
 import tensorflow as tf
-import tensorflow as tf
+tf.config.run_functions_eagerly(True)
+tf.data.experimental.enable_debug_mode()
 from fair_survival.helper_utils.colon_cancer_proc import processor as colon_data_processor
 import json 
 import pandas as pd 
-import tensorflow as tf
-import pickle as pkl 
 from .helper_utils.data_proc import my_ret_func  ,make_set_by_split,get_x_only,make_set_by_hospital
 from .model_dist import model_factory 
 from .helper_utils import configs as  help_configs 
@@ -15,7 +14,6 @@ from .helper_utils.data_proc import calculateBaselineHazard
 import matplotlib.pyplot as plt 
 import pdb 
 import optuna  as opt 
-
 def figure_version(log_dir): 
     ver = 0 
     log_path = os.path.join(log_dir,f'run_{ver}')
@@ -30,6 +28,11 @@ def build_optuna_params(param,trial):
     param['learning_rate'] = trial.suggest_float("learning_rate",0.0001,0.1)
     param['hidden_dim'] = trial.suggest_int("hidden_dim",4,12,1) 
     return param
+def sch(epoch,lr): 
+    if epoch < 75: 
+        return lr 
+    else: 
+        return lr* np.exp(-0.1)
 def main(in_config,trial=None): 
 
     if trial: 
@@ -92,18 +95,24 @@ def main(in_config,trial=None):
         callbacks = [reduce_lr]
         train_kwargs = {
         'steps_per_epoch':steps_per_epoch_train,
-        'stpes_per_epoch_val':steps_per_epoch_val,
+        'steps_per_epoch_val':steps_per_epoch_val,
         'verbose': True,
         'callbacks':callbacks,
         'vae_epoch':train_config['vae_epoch'],
         'x2u_epoch':train_config['x2u_epoch'],
         'xu2y_epoch':train_config['xu2y_epoch'],
         'calib_epoch':train_config['calib_epoch'],
-            }
-        model.fit(ds_dict_source['train'], ds_dict_source['val'], ds_dict_source['tune'],
-            steps_per_epoch_val, **train_kwargs)
+        "vae_callbacks":None
+        }
+        model.fit(ds_dict_source['train'], ds_dict_source['val'], ds_dict_source['tune'], #The current run updates external not mayo
+         **train_kwargs)
+        #model.fit(ds_dict_source['train'], ds_dict_source['val'], ds_dict_source['external'], #The current run updates external not mayo
+        # **train_kwargs)
         histories = pd.DataFrame(model.vae.history.history) 
         history_path = os.path.join(log_path,'causal_model_history.csv')
+        histories.to_csv(history_path,index=False)
+        histories = pd.DataFrame(model.model_xu2y.history.history) 
+        history_path = os.path.join(log_path,'causal_model_xu2y_history.csv')
         histories.to_csv(history_path,index=False)
     if model_name=='baseline':
         weight_file = os.path.join(log_path,'model.h5')
@@ -117,7 +126,6 @@ def main(in_config,trial=None):
         callbacks = [reduce_lr] 
         if trial is None: 
             callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath=weight_file,monitor='val_loss',save_best_only=True,save_weights_only=True,save_freq='epoch',verbose=1))
-
         train_kwargs = {
         'epochs':train_config['epochs'],
         'callbacks':callbacks,
@@ -127,7 +135,6 @@ def main(in_config,trial=None):
         'validation_steps':val_size//val_batch_size,
         'validation_freq':val_freq,
         'validation_data':val_data
-
         } 
         history = model.fit(train_set,**train_kwargs)
         plt.figure(dpi=300)
@@ -144,10 +151,9 @@ def main(in_config,trial=None):
     if model_name=='causal': 
         split_dfs = list() 
         val_steps=  steps_per_epoch_val
-        for split in center_ts_ds.keys(): 
+        for split in test_ds_dict_source.keys(): 
             predictions = list()  
-            model.predict_realign(ds_dict_source['train'],ds_dict_source['val'],center_ts_ds[split],val_steps,train_kwargs)
-            for encode_in in iter(center_ts_ds[split].map(get_x_only)):
+            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)):
                 hazard = model.predict_hazard(encode_in)
                 predictions.append(hazard)
             all_preds= np.vstack(predictions) 

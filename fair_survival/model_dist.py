@@ -35,13 +35,13 @@ def get_baseline_model(load_path=None,config=None):
     return model 
 
 def mlp(num_classes, width, input_shape, learning_rate,
-        loss=DEFAULT_LOSS, metrics=[]): #i changed the default to be None so it would yell at me 
+        loss=DEFAULT_LOSS, metrics=[],activation='relu'): #i changed the default to be None so it would yell at me 
   """Multilabel Classification."""
   model_input = tf.keras.Input(shape=input_shape)
   # hidden layer
   if width:
     x = tf.keras.layers.Dense(
-        width, use_bias=True, activation='relu'
+        width, use_bias=True, activation=activation
     )(model_input)
   else:
     x = model_input

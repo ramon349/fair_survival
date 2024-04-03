@@ -11,8 +11,106 @@ Classifier: Environment :: Console
 Classifier: Programming Language :: Python :: 3.`0
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+Requires-Dist: absl-py==1.4.0
+Requires-Dist: aequitas==0.42.0
+Requires-Dist: altair==4.1.0
+Requires-Dist: astor==0.8.1
+Requires-Dist: astunparse==1.6.3
+Requires-Dist: attrs==23.1.0
+Requires-Dist: autograd==1.6.2
+Requires-Dist: autograd-gamma==0.5.0
+Requires-Dist: bottle==0.12.25
+Requires-Dist: cachetools==5.3.1
+Requires-Dist: certifi==2023.7.22
+Requires-Dist: charset-normalizer==3.2.0
+Requires-Dist: click==8.1.7
+Requires-Dist: contextlib2==21.6.0
+Requires-Dist: contourpy==1.1.0
+Requires-Dist: cycler==0.11.0
+Requires-Dist: dominate==2.8.0
+Requires-Dist: entrypoints==0.4
+Requires-Dist: et-xmlfile==1.1.0
+Requires-Dist: flask==0.12.2
+Requires-Dist: flask-bootstrap==3.3.7.1
+Requires-Dist: flatbuffers==23.5.26
+Requires-Dist: fonttools==4.42.1
+Requires-Dist: formulaic==0.6.6
+Requires-Dist: future==0.18.3
+Requires-Dist: gast==0.4.0
+Requires-Dist: google-auth==2.22.0
+Requires-Dist: google-auth-oauthlib==1.0.0
+Requires-Dist: google-pasta==0.2.0
+Requires-Dist: greenlet==2.0.2
+Requires-Dist: grpcio==1.57.0
+Requires-Dist: h5py==3.10.0
+Requires-Dist: html5lib==1.1
+Requires-Dist: httplib2==0.22.0
+Requires-Dist: idna==3.4
+Requires-Dist: interface-meta==1.3.0
+Requires-Dist: itsdangerous==2.1.2
+Requires-Dist: jax==0.4.14
+Requires-Dist: jinja2==3.1.2
+Requires-Dist: joblib==1.3.2
+Requires-Dist: jsonschema==4.19.0
+Requires-Dist: jsonschema-specifications==2023.7.1
+Requires-Dist: keras==2.13.1
+Requires-Dist: kiwisolver==1.4.5
+Requires-Dist: libclang==16.0.6
+Requires-Dist: lifelines==0.27.8
+Requires-Dist: markdown==3.4.4
+Requires-Dist: markdown2==2.3.5
+Requires-Dist: markupsafe==2.1.3
+Requires-Dist: matplotlib==3.7.2
+Requires-Dist: millify==0.1.1
+Requires-Dist: ml-collections==0.1.1
+Requires-Dist: ml-dtypes==0.2.0
+Requires-Dist: numpy==1.24.3
+Requires-Dist: oauthlib==3.2.2
+Requires-Dist: ohio==0.5.0
+Requires-Dist: openpyxl==3.1.2
+Requires-Dist: opt-einsum==3.3.0
+Requires-Dist: optuna-dashboard==0.13.0
+Requires-Dist: pandas==2.1.1
+Requires-Dist: patsy==0.5.3
+Requires-Dist: pillow==10.0.0
+Requires-Dist: protobuf==4.24.2
+Requires-Dist: pyasn1==0.5.0
+Requires-Dist: pyasn1-modules==0.3.0
+Requires-Dist: pyparsing==3.0.9
+Requires-Dist: pypdf2==3.0.1
+Requires-Dist: pytz==2023.3.post1
+Requires-Dist: referencing==0.30.2
+Requires-Dist: reportlab==4.0.4
+Requires-Dist: requests==2.31.0
+Requires-Dist: requests-oauthlib==1.3.1
+Requires-Dist: rpds-py==0.10.3
+Requires-Dist: rsa==4.9
+Requires-Dist: scikit-learn==1.3.0
+Requires-Dist: scipy==1.11.2
+Requires-Dist: seaborn==0.12.2
+Requires-Dist: sqlalchemy==2.0.20
+Requires-Dist: statsmodels==0.14.0
+Requires-Dist: tableone==0.8.0
+Requires-Dist: tabulate==0.8.2
+Requires-Dist: tensorboard==2.13.0
+Requires-Dist: tensorboard-data-server==0.7.1
+Requires-Dist: tensorflow==2.13.0
+Requires-Dist: tensorflow-estimator==2.13.0
+Requires-Dist: tensorflow-io-gcs-filesystem==0.33.0
+Requires-Dist: termcolor==2.3.0
+Requires-Dist: threadpoolctl==3.2.0
+Requires-Dist: toolz==0.12.0
+Requires-Dist: typing-extensions==4.5.0
+Requires-Dist: tzdata==2023.3
+Requires-Dist: urllib3==1.26.16
+Requires-Dist: visitor==0.1.3
+Requires-Dist: webencodings==0.5.1
+Requires-Dist: werkzeug==2.3.7
+Requires-Dist: wrapt==1.15.0
+Requires-Dist: xhtml2pdf==0.2.2
+Requires-Dist: optuna==3.4.0
 
-- ./fair_survival/model_dist.py:143:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
-- ./fair_survival/model_dist.py:147:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
-- ./fair_survival/model_dist.py:172:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
-- ./fair_survival/train.py:48:        ).repeat().shuffle(batch_size*4).batch(batch_size) for key, value in input_dict.items() #TODO: I should update this shuffling stuff
+- ./fair_survival/model_dist.py:152:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
+- ./fair_survival/model_dist.py:156:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
+- ./fair_survival/model_dist.py:181:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
+- ./fair_survival/train.py:167:            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)): #TODO make it so that  we use the baseline hazard and adjust accordingly at inference time 

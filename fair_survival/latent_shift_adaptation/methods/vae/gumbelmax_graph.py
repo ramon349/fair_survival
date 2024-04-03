@@ -249,11 +249,14 @@ class Method(baseline.Method):
     # fit VAE to get p(u | all)
     self.inputs = self.vae_inputs
     ds = data_source_train.map(self.get_input) 
-    vae_fit_kwargs = {k:v for k,v in fit_kwargs.items()} 
+    #vae_fit_kwargs = {k:v for k,v in fit_kwargs.items()} 
     vae_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
     vae_fit_kwargs['epochs'] = fit_kwargs['vae_epoch']
+    vae_fit_kwargs['callbacks']= fit_kwargs['vae_callbacks']
+    vae_fit_kwargs['validation_steps']= steps_per_epoch_val
+    val_ds = data_source_val.map(self.get_input)
     print(f"Training VAE Model")
-    self.vae.fit(ds,**vae_fit_kwargs)
+    self.vae.fit(ds,validation_data=val_ds,shuffle=True,**vae_fit_kwargs)
     print(f"Done Training VAE Model")
     self.vae.trainable = False
     self.inputs = "x"
@@ -263,10 +266,12 @@ class Method(baseline.Method):
         self.model_x2u.optimizer.learning_rate, self.start_lr_x2u
     )
     ds_x2u = data_source_train.map(self.x2u) 
+    ds_x2u_val = data_source_val.map(self.x2u)
     print(f"Trianing x2u Model")
     x2u_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
     x2u_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
-    self.model_x2u.fit(ds_x2u, **x2u_fit_kwargs)  # this outputs logits
+    x2u_fit_kwargs['validation_steps'] = steps_per_epoch_val
+    self.model_x2u.fit(ds_x2u, validation_data=ds_x2u_val,**x2u_fit_kwargs)  # this outputs logits
     print(f"Done training x2u Model")
     # now calibrate
     print("Doing Calibrate")
@@ -284,11 +289,14 @@ class Method(baseline.Method):
     #ds_xu2y = data_source_train.map(self.xu2y)
     
     ds_xu2y = data_source_train.map(self.xu2y_time)
+    ds_xu2y_val = data_source_val.map(self.xu2y_time)
     xu2y_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
     xu2y_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
-    print("training xu2y model")
+    xu2y_fit_kwargs['validation_steps'] = steps_per_epoch_val
     #pdb.set_trace()
-    self.model_xu2y.fit(ds_xu2y,**xu2y_fit_kwargs) 
+    callbacks = [tf.keras.callbacks.ModelCheckpoint('./temp_xu2y.my_mod',save_best_only=True,save_weigths_only=True,monitor='val_loss')]
+    self.model_xu2y.fit(ds_xu2y,validation_data =ds_xu2y_val,callbacks=callbacks,**xu2y_fit_kwargs) 
+    self.model_xu2y.load_weights('./temp_xu2y.my_mod')
     print(" done training xu2y model")
     print("Training claibration model")
     self._calibrate(data_source_val, "xu2y", **fit_kwargs)
