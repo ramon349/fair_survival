@@ -87,7 +87,7 @@ def main(in_config,trial=None):
     model_name = train_config['model_name']
     model= model_factory(model_name=model_name,config=train_config,sample_data=input_dict['train']) 
     weight_file = os.path.join(log_path,'model.h5')
-    if model_name=='causal': 
+    if model_name=='causal' or model_name=='causal_ablate': 
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
         monitor='x_loss', min_delta=0.01, factor=0.01, patience=3,
         min_lr=1e-12,verbose=True)
@@ -111,7 +111,10 @@ def main(in_config,trial=None):
         histories = pd.DataFrame(model.vae.history.history) 
         history_path = os.path.join(log_path,'causal_model_history.csv')
         histories.to_csv(history_path,index=False)
-        histories = pd.DataFrame(model.model_xu2y.history.history) 
+        if model_name=='causal':
+            histories = pd.DataFrame(model.model_xu2y.history.history) 
+        else: 
+            histories = pd.DataFrame(model.model_risk.history.history) 
         history_path = os.path.join(log_path,'causal_model_xu2y_history.csv')
         histories.to_csv(history_path,index=False)
     if model_name=='baseline':
@@ -147,8 +150,7 @@ def main(in_config,trial=None):
         val_loss = min(history.history['val_loss'])
     if trial:  
         return val_loss 
-
-    if model_name=='causal': 
+    if model_name=='causal' or model_name=='causal_ablate': 
         split_dfs = list() 
         val_steps=  steps_per_epoch_val
         for split in test_ds_dict_source.keys(): 

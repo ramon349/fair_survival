@@ -1,0 +1,442 @@
+from  ....latent_shift_adaptation.methods import baseline
+from fair_survival.latent_shift_adaptation.methods import baseline
+from fair_survival.latent_shift_adaptation.utils import gumbelmax_vae_ci
+from fair_survival.latent_shift_adaptation.utils import temp_scaling
+import numpy as np
+import tensorflow as tf
+import pdb 
+tf.config.run_functions_eagerly(True)
+
+
+class MethodAblation(baseline.Method):
+  def __init__(
+      self,
+      vae_encoder,
+      decoder_width,
+      vae_opt,
+      model_x2u,
+      model_risk,
+      dims,
+      latent_dim,
+      compressed_latent_dim=None,
+      num_classes=2,
+      kl_loss_coef=1.0,
+      vae_temp=1.0,
+      temp_anneal=0.9999,
+      min_temp=1e-2,
+      var_x=1.0,
+      vae_inputs="xycwte",
+      evaluate=None,
+      dtype=tf.float32,
+      pos=None,
+      baselineHazards=None,
+      c_weights=None,
+      w_weights=None,
+      enc_y_loss='survival',
+      use_latent=True,
+      use_features=True,
+      apply_latent_adapt=True
+    ):  # pylint: disable=g-doc-args
+        super(MethodAblation,self).__init__(evaluate, dtype, pos) 
+        self.baseline_hazard = baselineHazards.reshape((1,-1)) 
+        if self.baseline_hazard is None: 
+            raise("You messed up. Pass the baseline hazard")
+        # models
+        # latent dimension compression
+        self.latent_dim = latent_dim  # dim of latent space
+        if compressed_latent_dim is None:
+            compressed_latent_dim = latent_dim
+        if latent_dim % compressed_latent_dim != 0:
+            raise ValueError("latent_dim must be multiple of compressed_latent_dim.")
+        self.compressed_latent_dim = compressed_latent_dim
+        self.compression_factor = latent_dim // compressed_latent_dim
+        self.use_latent = use_latent 
+        self.use_features = use_features
+        self.apply_latent_adapt = apply_latent_adapt
+        # verify models have the right input and output shapes
+        if model_x2u.input_shape != (None, dims.x):
+            raise ValueError("input shape for model_x2u is invalid.")
+        if model_x2u.output_shape != (None, compressed_latent_dim):
+            raise ValueError("output shape for model_x2u is invalid.")
+        if model_risk.input_shape != (None, int(self.use_features)*dims.x + int(self.use_latent)*compressed_latent_dim):
+            raise ValueError(f"input shape for model_risk is invalid. {dims.x} {compressed_latent_dim}")
+        if model_risk.output_shape != (None, num_classes):
+            raise ValueError(f"output shape for model_risk is invalid. {model_risk.output_shape} {num_classes}") 
+        if vae_encoder.output_shape != (None, latent_dim):
+            raise ValueError("output shape for vae_encoder is invalid.")
+
+        self.model_x2u = model_x2u
+        self.model_risk = model_risk
+        # store initial lr to avoid issues with keras lr scheduling callbacks
+        self.start_lr_x2u = self.model_x2u.optimizer.learning_rate.numpy()
+        self.start_lr_risk = self.model_risk.optimizer.learning_rate.numpy()
+
+        self.num_classes = num_classes 
+        # VAE
+        self.vae = gumbelmax_vae_ci.GumbelMaxVAECI(
+            vae_encoder,
+            decoder_width,
+            latent_dim=latent_dim,
+            temp=vae_temp,
+            temp_anneal=temp_anneal,
+            var_x=var_x,
+            kl_loss_coef=kl_loss_coef,
+            min_temp=min_temp,
+            dims=dims,
+            pos=pos,
+            c_weights=c_weights,
+            w_weights = w_weights,
+            enc_y_loss=enc_y_loss
+        )
+
+        self.vae.compile(optimizer=vae_opt)
+        # specify here the inputs used to predict u in VAE
+        self.vae_inputs = vae_inputs
+        self.inputs = "x"  # model input that's available to make a prediction
+        self.outputs = "y"
+  
+  def predict_u_from_all(self, *batch, dtype=tf.float32):
+    """Predict u from all other variables using trained VAE."""
+    eps = 1e-10
+    model_input = self.get_input(*batch, inputs=self.vae_inputs)
+    u_logits = self.vae.encoder(model_input)
+
+    # use gumbel-max trick to sample from categorical distribution
+    sample = tf.keras.backend.random_uniform(
+        tf.shape(u_logits), minval=0, maxval=1
+    )
+    noise = -tf.math.log(-tf.math.log(sample + eps) + eps)
+    noisy_u_logits = u_logits + noise
+    u_sample = tf.math.argmax(noisy_u_logits, axis=1)
+    u = tf.one_hot(u_sample, self.latent_dim, dtype=tf.int32)
+
+    # now compress
+    if self.compressed_latent_dim != self.latent_dim:
+      splitted = tf.split(
+          u, num_or_size_splits=self.compressed_latent_dim, axis=1
+      )
+      u_compressed = tf.concat(
+          [
+              tf.reshape(
+                  tf.reduce_any(tf.cast(splitted[i], tf.bool), axis=1), (-1, 1)
+              )
+              for i in range(self.compressed_latent_dim)
+          ],
+          axis=1,
+      )
+    else:
+      u_compressed = u
+    return tf.cast(u_compressed, tf.float32)
+  
+  def predict_u_from_x(self, *batch):
+    """Predict u from x."""
+    model_input = self.get_input(*batch, inputs="x")
+    u_logits = self.model_x2u.predict(model_input)
+    return tf.math.softmax(u_logits)
+  
+  def x2u(self, *batch):
+    """Generate (x, u) data to train p(u|x)."""
+    u = self.predict_u_from_all(*batch)
+    x = self.get_input(*batch, inputs="x")
+    return x, u
+  
+  def risk_y_time(self,*batch):
+    u = self.predict_u_from_all(*batch)
+    x = self.get_input(*batch, inputs="x")
+    te = self.get_input(*batch, inputs="te")
+    if self.use_features and self.use_latent:
+        return tf.concat([x, u], axis=1), te  # stack x with u
+    if self.use_features: 
+        return x,te 
+    if self.use_latent:
+        return u,te 
+  
+  def _get_freq_ratio(self, data_source_val, data_target, num_batches):
+    """Apply label correction to get q(u)/p(u) using validation data."""
+    # calculate confusion matrix in source p
+    u_true, u_pred = self._predict_u_mult(data_source_val, num_batches)
+    confusion_matrix = (
+        np.sum(
+            [
+                np.outer(u_true[i, :], u_pred[i, :])
+                for i in range(u_pred.shape[0])
+            ],
+            axis=0,
+        )
+        / u_pred.shape[0]
+    )
+    confusion_matrix = tf.cast(
+        confusion_matrix.transpose(), tf.float64
+    )  # tf.float64, otherwise error!
+
+    # calculate mu (mean prediction) in target domain
+    _, u_pred_traget = self._predict_u_mult(data_target, num_batches)
+    mu = (
+        np.mean(u_pred_traget, axis=0)
+        .reshape((self.compressed_latent_dim, 1))
+        .astype(np.float64)
+    )
+    # now, calculate weights
+    weights = tf.squeeze(tf.linalg.pinv(confusion_matrix) @ tf.constant(mu))
+    weights = np.minimum(np.maximum(1e-2, weights.numpy()), 15)  # clip weights
+    class_weight = {i: weights[i] for i in range(self.compressed_latent_dim)}
+    return class_weight  # weight here is frequency ratio q(u) / p(u)
+
+  def fit(
+      self,
+      data_source_train,
+      data_source_val,
+      data_target,
+      steps_per_epoch_val,
+      **fit_kwargs,
+  ):
+    """Fit model on data. See high-level description above."""
+    # verify data assumptions (e.g. shape/range)
+
+    batch = next(iter(data_source_train))
+    self.assertions(*batch)
+
+    # fit VAE to get p(u | all)
+    self.inputs = self.vae_inputs
+    ds = data_source_train.map(self.get_input) 
+    #vae_fit_kwargs = {k:v for k,v in fit_kwargs.items()} 
+    vae_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
+    vae_fit_kwargs['epochs'] = fit_kwargs['vae_epoch']
+    vae_fit_kwargs['callbacks']= fit_kwargs['vae_callbacks']
+    vae_fit_kwargs['validation_steps']= steps_per_epoch_val
+    val_ds = data_source_val.map(self.get_input)
+    print(f"Training VAE Model")
+    self.vae.fit(ds,validation_data=val_ds,shuffle=True,**vae_fit_kwargs)
+    print(f"Done Training VAE Model")
+    self.vae.trainable = False
+    self.inputs = "x"
+
+    # fit p(u|x) in source
+    tf.keras.backend.set_value(
+        self.model_x2u.optimizer.learning_rate, self.start_lr_x2u
+    )
+    ds_x2u = data_source_train.map(self.x2u) 
+    ds_x2u_val = data_source_val.map(self.x2u)
+    print(f"Trianing x2u Model")
+    x2u_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
+    x2u_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
+    x2u_fit_kwargs['validation_steps'] = steps_per_epoch_val
+    self.model_x2u.fit(ds_x2u, validation_data=ds_x2u_val,**x2u_fit_kwargs)  # this outputs logits
+    print(f"Done training x2u Model")
+    # now calibrate
+    print("Doing Calibrate")
+    self._calibrate(data_source_val, mode="x2u", **fit_kwargs)
+    print("Done Calibrating")
+    self.model_x2u.trainable = False
+    # estimate q(u) / p(u) using the confusion matrix
+    self.freq_ratio = self._get_freq_ratio(
+        data_source_val, data_target, steps_per_epoch_val
+    )
+    # fit p(y|x,u).
+    tf.keras.backend.set_value(
+        self.model_risk.optimizer.learning_rate, self.start_lr_risk
+    )
+    #ds_xu2y = data_source_train.map(self.xu2y)
+
+    ds_risk_inputs = data_source_train.map(self.risk_y_time)
+    ds_risk_inputs_val= data_source_val.map(self.risk_y_time)
+    xu2y_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
+    xu2y_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
+    xu2y_fit_kwargs['validation_steps'] = steps_per_epoch_val
+    callbacks = [tf.keras.callbacks.ModelCheckpoint('./temp_xu2y.my_mod',save_best_only=True,save_weigths_only=True,monitor='val_loss')]
+    self.model_risk.fit(ds_risk_inputs,validation_data=ds_risk_inputs_val,callbacks=callbacks,**xu2y_fit_kwargs)
+    self.model_risk.load_weights('./temp_xu2y.my_mod')
+    print(" done training xu2y model")
+    print("Training claibration model")
+    if self.apply_latent_adapt:
+        self._calibrate(data_source_val, "xu2y", **fit_kwargs)
+        print("Done training calibration model")
+    self.model_risk.trainable = False
+  
+  def predict_hazard(self,model_input,**kwargs):
+    def _append_u(x, u_val):
+        """Return [x, u] with u fixed to the chosen value."""
+        batch_len = x.shape[0]
+        x = tf.cast(x, self.dtype)
+        u = tf.keras.utils.to_categorical(
+            u_val * np.ones((batch_len,)), self.compressed_latent_dim
+        )
+        u = tf.cast(u, self.dtype)
+        if self.use_features and self.use_latent: 
+            stack = tf.concat([x, u], axis=1)
+            return stack 
+        if self.use_features: 
+            return x 
+        if self.use_latent: 
+            return u 
+
+    # initialize predictions to zero
+    batch_len = model_input.shape[0] 
+    time_points = self.baseline_hazard.shape[1]
+    """
+    result_temp = np.zeros(
+        (batch_len, self.num_classes,time_points ,self.compressed_latent_dim)
+    )
+    """
+    result_temp = np.zeros(
+        (batch_len, self.num_classes,self.compressed_latent_dim)
+    )
+
+    # obtain p(u | x)
+    u_logits_all = self.model_x2u.predict(model_input)
+    pu_all = tf.math.softmax(u_logits_all).numpy()
+    #for all time points do the marginalization for all the timepoints 
+    # marginalize over u
+    for category in range(self.compressed_latent_dim):
+      input_xu = _append_u(model_input, category)
+      y_xu_logits = self.model_risk.predict(input_xu, **kwargs)
+      #y_xu_logits = tf.math.sigmoid(y_xu_logits)
+      pu = pu_all[:, category].reshape(-1, 1)
+      risk = np.exp(y_xu_logits)  
+      #y_xu = tf.math.softmax(y_xu_logits).numpy()
+      #pdb.set_trace()
+      result_temp[:,:,category] = risk*(pu * self.freq_ratio[category])#.reshape(batch_len,1,time_points)
+      #result_temp[:, :, :,category] = (pu * self.freq_ratio[category])#.reshape(batch_len,1,time_points)
+      #result_temp[:, :, :,category] = ( pu * self.freq_ratio[category]).reshape(batch_len,1,time_points)
+    # Sum over U
+    result_temp = result_temp.sum(axis=-1) 
+    result_temp = result_temp/result_temp.sum()
+    if self.apply_latent_adapt:
+      ht = self.baseline_hazard*risk*result_temp
+    else: 
+      ht = self.baseline_hazard*risk
+    ST = np.exp(-1*ht.cumsum(axis=1))
+    # Normalize 
+    #y_pred = result_temp / result_temp.sum(axis=-1)
+    if self.apply_latent_adapt:
+        #y_pred = result_temp / result_temp.sum(axis=-1, keepdims=True)
+        y_pred = ST 
+        return y_pred.reshape(batch_len,time_points)
+    else: 
+        return ST
+  def _calibrate(self, data, mode="all", **kwargs):
+    """Calibrate model on validation data."""
+    assert mode in ["all", "x2u", "xu2y"]
+
+    # first, we calibrate x->u
+    if mode in ["all", "x2u"]:
+      calib_model = temp_scaling.TempCalibratedModel(self.model_x2u)
+      opt = tf.keras.optimizers.SGD(learning_rate=1e-3)  # ok to hard-code lr
+      calib_model.compile(loss=self.model_x2u.loss, optimizer=opt)
+      ds = data.map(self.x2u)
+      calib_kwargs = {'steps_per_epoch':kwargs['steps_per_epoch'],'verbose':kwargs['verbose'],'epochs':kwargs['calib_epoch']}
+      calib_model.fit(ds, **calib_kwargs)
+      self.model_x2u = calib_model
+
+    # second, we calibrate (x, u) -> y
+    if mode in ["all", "xu2y"]:
+      calib_model = temp_scaling.TempCalibratedModel(self.model_risk)
+      opt = tf.keras.optimizers.SGD(learning_rate=1e-4)  # ok to hard-code lr
+      calib_model.compile(loss=self.model_risk.loss, optimizer=opt)
+      ds = data.map(self.risk_y_time)
+      calib_kwargs = {'steps_per_epoch':kwargs['steps_per_epoch'],'verbose':kwargs['verbose'],'epochs':kwargs['calib_epoch']}
+      calib_model.fit(ds, **calib_kwargs)
+      self.model_risk= calib_model 
+  
+  def predict_mult(self, data, num_batches, **kwargs):
+    """Predict target Y from the TF dataset directly. See also: predict()."""
+    y_true = []
+    y_pred = []
+    ds_iter = iter(data)
+    for _ in range(num_batches):
+      batch = next(ds_iter)
+      y = self.get_output(*batch, outputs="y")
+      y_true.extend(y)
+      model_input = self.get_input(*batch, inputs="x")
+      y_pred.extend(self.predict(model_input, **kwargs))
+
+    return np.array(y_true), np.array(y_pred)
+
+
+  def predict(self, model_input, **kwargs):
+    """Predict target Y given x by marginalizing over u with correction."""
+
+    def _append_u(x, u_val):
+      """Return [x, u] with u fixed to the chosen value."""
+      batch_len = x.shape[0]
+      x = tf.cast(x, self.dtype)
+      u = tf.keras.utils.to_categorical(
+          u_val * np.ones((batch_len,)), self.compressed_latent_dim
+      )
+      u = tf.cast(u, self.dtype)
+      stack = tf.concat([x, u], axis=1)
+      return stack
+
+    # initialize predictions to zero
+    batch_len = model_input.shape[0]
+    result_temp = np.zeros(
+        (batch_len, self.num_classes, self.compressed_latent_dim)
+    )
+
+    # obtain p(u | x)
+    u_logits_all = self.model_x2u.predict(model_input)
+    pu_all = tf.math.softmax(u_logits_all).numpy()
+
+    # marginalize over u
+    for category in range(self.compressed_latent_dim):
+      input_xu = _append_u(model_input, category)
+      pu = pu_all[:, category].reshape(-1, 1)
+      y_xu_logits = self.model_risk.predict(input_xu, **kwargs)
+      y_xu = tf.math.softmax(y_xu_logits).numpy()
+      result_temp[:, :, category] = y_xu * pu * self.freq_ratio[category]
+    # Sum over U
+    result_temp = result_temp.sum(axis=-1)
+
+    # Normalize 
+    #y_pred = result_temp / result_temp.sum(axis=-1)
+    y_pred = result_temp / result_temp.sum(axis=-1, keepdims=True)
+    return y_pred
+
+  def predict_realign(self,data_source_train,data_source_val,data_target,steps_per_epoch_val,fit_kwargs):
+    self.freq_ratio = self._get_freq_ratio(
+        data_source_val, data_target, steps_per_epoch_val
+    )
+    # fit p(y|x,u).
+    tf.keras.backend.set_value(
+        self.model_risk.optimizer.learning_rate, self.start_lr_xu2y
+    )
+    #ds_xu2y = data_source_train.map(self.xu2y)
+    self.model_risk.trainable = True
+    ds_xu2y = data_source_train.map(self.xu2y_time)
+    xu2y_fit_kwargs ={'steps_per_epoch':fit_kwargs['steps_per_epoch'],'verbose':fit_kwargs['verbose']}
+    xu2y_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
+    print("training xu2y model")
+    self.model_risk.fit(ds_xu2y,**xu2y_fit_kwargs) 
+    print(" done training xu2y model")
+    print("Training claibration model")
+    self._calibrate(data_source_val, "xu2y", **fit_kwargs)
+    print("Done training calibration model")
+    self.model_risk.trainable = False
+
+  def predict_mult(self, data, num_batches, **kwargs):
+    """Predict target Y from the TF dataset directly. See also: predict()."""
+    y_true = []
+    y_pred = []
+    ds_iter = iter(data)
+    for _ in range(num_batches):
+      batch = next(ds_iter)
+      y = self.get_output(*batch, outputs="y")
+      y_true.extend(y)
+      model_input = self.get_input(*batch, inputs="x")
+      y_pred.extend(self.predict(model_input, **kwargs))
+
+    return np.array(y_true), np.array(y_pred)
+
+  def _predict_u_mult(self, data, num_batches, **kwargs):
+    """Used internally for label correction."""
+    u_true = []
+    u_pred = []
+    ds_iter = iter(data)
+    for _ in range(num_batches):
+      batch = next(ds_iter)
+      u = self.predict_u_from_all(*batch)
+      u_true.extend(u)
+      model_input = self.get_input(*batch, inputs="x")
+      u_pred.extend(self.predict_u_from_x(model_input, **kwargs))
+
+    return np.array(u_true), np.array(u_pred)

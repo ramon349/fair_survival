@@ -90,6 +90,9 @@ def build_args():
     parser.add_argument('--c_weights',type=json.loads,required=False)
     parser.add_argument("--enc_y_loss",type=str,choices=['classification','survival'],required=False)
     parser.add_argument("--hidden_dim",type=int,required=False)
+    parser.add_argument('--risk_pred_use_latent',type=parse_bool,default=True)
+    parser.add_argument('--risk_pred_use_feature',type=parse_bool,default=True)
+    parser.add_argument('--risk_pred_apply_shift',type=parse_bool,default=True)
     return parser
 
 def build_test_args(): 
