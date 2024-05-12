@@ -37,7 +37,7 @@ setup(
     zip_safe=False,
     install_requires=_read_install_requires(),
     extras_require=_fill_extras(EXTRAS),
-    python_requires=">=3.11",
+    python_requires=">=3.9",
     classifiers=[
         "Development Status :: 0  Debug mode",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

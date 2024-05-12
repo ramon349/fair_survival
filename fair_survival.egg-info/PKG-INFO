@@ -9,7 +9,11 @@ Classifier: Development Status :: 0  Debug mode
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Environment :: Console
 Classifier: Programming Language :: Python :: 3.`0
+<<<<<<< HEAD
+Requires-Python: >=3.9
+=======
 Requires-Python: >=3.11
+>>>>>>> 62d169f3e8f9f76982fb02cf2d6c277c7ff26e0f
 Description-Content-Type: text/markdown
 Requires-Dist: absl-py==1.4.0
 Requires-Dist: aequitas==0.42.0

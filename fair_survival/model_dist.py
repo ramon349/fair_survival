@@ -11,7 +11,7 @@ import keras
 DEFAULT_LOSS = tf.keras.losses.BinaryCrossentropy(from_logits=True) 
 import pdb 
 
-def model_factory(model_name,config=None,sample_data=None): 
+def model_factory(model_name,config=None,sample_data=None,train_d=None): 
     if model_name=='baseline': 
         return get_baseline_model(config=config) 
     if model_name=='causal': 
@@ -154,7 +154,7 @@ def build_latent_shift_model(sample_data,config,train_d=None):
     x_dim,c_dim,w_dim = figure_dims(sample_data=sample_data,config=config)
     num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
     encoder = mlp(num_classes=latent_dim, width=width,
-            input_shape=(x_dim + c_dim + w_dim + num_classes+1+1),
+            input_shape=(x_dim + c_dim + w_dim + num_classes+4),
             learning_rate=learning_rate,
             metrics=['accuracy']) #TODO: Why is accruacy a metric here
 
@@ -176,7 +176,7 @@ def build_latent_shift_model(sample_data,config,train_d=None):
     dims.e = 1
     print(dims)
     if config['dataset']=='mammo': 
-        base_haz = calculateBaselineHazard(train_d)
+        base_haz = calculateBaselineHazard(train_d,event_col='event',time_col='time_to_event')
     else: 
         base_haz = calculateBaselineHazard(sample_data,event_col='event',time_col='time_to_event')
     evaluate = tf.keras.metrics.BinaryCrossentropy()
