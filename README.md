@@ -1,4 +1,21 @@
-- ./fair_survival/model_dist.py:155:    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
-- ./fair_survival/model_dist.py:159:            metrics=['accuracy']) #TODO: Why is accruacy a metric here
-- ./fair_survival/model_dist.py:184:    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
-- ./fair_survival/train.py:175:            for encode_in in iter(test_ds_dict_source[split].map(get_x_only)): #TODO make it so that  we use the baseline hazard and adjust accordingly at inference time 
+# Install info 
+Required python is 3.11 
+
+requirements.txt is still under work 
+
+# Reproducing this work. (Data setup) 
+1. Run notebooks labeled step 0a and 0b in the  notebooks directory 
+2. You will find that they  produce a csv file called causal_encoder_encoded_dataset.csv this is the one we will use for all our development 
+3. You will now run the baseline cox proportional hazards models trained by the previous group 
+    ```bash 
+    bash ./sharable_scripts/step0_train_baseline_models.sh  
+    ```
+4. Training our model 
+    ```bash 
+    bash ./sharable_scripts/step0_train_baseline_models.sh  
+    ```
+
+# Side notes: 
+    - it might be unfair to give the mayo data as an additional tuning set. We might want to train the baseline model with the inclusion of the tuning set
+    - this should also count for the baseline pycoxmdoel 
+
