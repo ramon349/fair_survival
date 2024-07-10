@@ -1,6 +1,5 @@
 __pycache__/
 *.csv 
-*.json 
 *.ipynb 
 :fair_survival.egg-info/
 

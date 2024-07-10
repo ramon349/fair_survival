@@ -1,0 +1,27 @@
+{
+    "data_path":"input_csv.csv",
+    "dataset":"colon",
+    "log_dir":"path_to_file",
+    "c_weights":[14.965, 2.522, 2.487],
+    "w_weights":[1.332, 13.216, 92.512, 6.147],
+    "subsets":{
+        "train":"internal-train",
+        "test":"internal-test",
+        "val":"internal-val",
+        "external":"external-test"
+    },
+    "w_column":"center_",
+    "c_column":"Stage_",
+    "patient_identifier":"Study ID",
+    "feature_names":["%Tumor within tumor bed","%Stroma within tumor bed",
+    "%Mucin within tumor","%necrosis within tumor bed","%TB/PDC within tumor","Tumor:Stroma Ratio",
+    "TILs per mm2 tumor","%High-grade","%SRCC","%Immature within tumor bed","%inflammatory within tumor bed",
+    "%mature within tumor bed","%immature within stromal region","%inflammatory within stromal region","%mature within stromal region","MMR status, 0=MMRP, 0=MMRD"],
+    "model_name":"baseline",
+    "num_workers":4,
+    "batch_size":256,
+    "learning_rate":0.01,
+    "hidden_dim":9,
+    "epochs":100,
+    "run_param_search":false
+}
