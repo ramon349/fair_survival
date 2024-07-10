@@ -147,7 +147,6 @@ class GumbelMaxVAECI(gumbelmax_vae.GumbelMaxVAE):
       u_logits = self.encoder(data)
       batch_len = tf.shape(u_logits)[0]
       u_logits = tf.reshape(u_logits, [batch_len, -1])  # reshape u_logits
-      pdb.set_trace()
       pu = tf.math.softmax(u_logits)  # prob over categorical latent space
       # add Gumbel noise
       u = gumbelmax_vae.Sampling()(u_logits, self.temp)

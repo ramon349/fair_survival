@@ -154,7 +154,6 @@ class Method(baseline.Method):
     eps = 1e-10
     model_input = self.get_input(*batch, inputs=self.vae_inputs)
     u_logits = self.vae.encoder(model_input)
-
     # use gumbel-max trick to sample from categorical distribution
     sample = tf.keras.backend.random_uniform(
         tf.shape(u_logits), minval=0, maxval=1
@@ -204,6 +203,7 @@ class Method(baseline.Method):
     """Apply label correction to get q(u)/p(u) using validation data."""
     # calculate confusion matrix in source p
     u_true, u_pred = self._predict_u_mult(data_source_val, num_batches)
+    pdb.set_trace()
     confusion_matrix = (
         np.sum(
             [
@@ -273,6 +273,7 @@ class Method(baseline.Method):
     x2u_fit_kwargs['validation_steps'] = steps_per_epoch_val
     self.model_x2u.fit(ds_x2u, validation_data=ds_x2u_val,**x2u_fit_kwargs)  # this outputs logits
     print(f"Done training x2u Model")
+    pdb.set_trace()
     # now calibrate
     print("Doing Calibrate")
     self._calibrate(data_source_val, mode="x2u", **fit_kwargs)

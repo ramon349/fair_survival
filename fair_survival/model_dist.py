@@ -11,13 +11,13 @@ import keras
 DEFAULT_LOSS = tf.keras.losses.BinaryCrossentropy(from_logits=True) 
 import pdb 
 
-def model_factory(model_name,config=None,sample_data=None,train_d=None): 
+def model_factory(model_name,config=None,sample_data=None): 
     if model_name=='baseline': 
         return get_baseline_model(config=config) 
     if model_name=='causal': 
         return build_latent_shift_model(sample_data=sample_data,config=config)
     if model_name=='causal_ablate': 
-        return build_adaptable_latent_shift_model(sample_data=sample_data,config=config)
+        return build_latent_shift_model(sample_data=sample_data,config=config)
     raise ValueError("Incorrect Model name")
 def get_baseline_model(load_path=None,config=None):
     #defining model graph 
@@ -154,7 +154,7 @@ def build_latent_shift_model(sample_data,config,train_d=None):
     x_dim,c_dim,w_dim = figure_dims(sample_data=sample_data,config=config)
     num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
     encoder = mlp(num_classes=latent_dim, width=width,
-            input_shape=(x_dim + c_dim + w_dim + num_classes+4),
+            input_shape=(x_dim + c_dim + w_dim + num_classes+1+1),
             learning_rate=learning_rate,
             metrics=['accuracy']) #TODO: Why is accruacy a metric here
 
@@ -176,7 +176,7 @@ def build_latent_shift_model(sample_data,config,train_d=None):
     dims.e = 1
     print(dims)
     if config['dataset']=='mammo': 
-        base_haz = calculateBaselineHazard(train_d,event_col='event',time_col='time_to_event')
+        base_haz = calculateBaselineHazard(train_d)
     else: 
         base_haz = calculateBaselineHazard(sample_data,event_col='event',time_col='time_to_event')
     evaluate = tf.keras.metrics.BinaryCrossentropy()
@@ -189,60 +189,4 @@ def build_latent_shift_model(sample_data,config,train_d=None):
                     num_classes=num_classes, evaluate=evaluate,
                     dtype=tf.float32, pos=pos,baselineHazards=base_haz,c_weights=config['c_weights'],w_weights=config['w_weights'],
                     enc_y_loss=config['enc_y_loss'])
-    return clf 
-
-
-def build_adaptable_latent_shift_model(sample_data,config,train_d=None):
-    #num classes whould always be 1
-    latent_dim =  config['latent_dim'] # 21 
-    width = config['width'] #  8 
-    kl_coeff = config['kl_coeff']# 3 
-    learning_rate = config['learning_rate'] # 1e-3
-    x_dim,c_dim,w_dim = figure_dims(sample_data=sample_data,config=config)
-    num_classes = 1 #TODO make this not be hardcoded.  Right now i want to make it adaptable
-    encoder = mlp(num_classes=latent_dim, width=width,
-            input_shape=(x_dim + c_dim + w_dim + num_classes+1+1),
-            learning_rate=learning_rate,
-            metrics=['accuracy']) #TODO: Why is accruacy a metric here
-
-    model_x2u = mlp(num_classes=latent_dim, width=width, input_shape=(x_dim,),
-                    learning_rate=learning_rate,
-                    metrics=['accuracy'])
-    risk_pred_use_latent=config['risk_pred_use_latent']
-    risk_pred_use_feature=config['risk_pred_use_feature']
-    risk_pred_apply_shift=config['risk_pred_apply_shift']
-    if config['dataset']=='colon':
-        if risk_pred_use_feature and risk_pred_use_latent: 
-            model_risk = mlp_time(input_shape=(x_dim+latent_dim),config=config)
-        else:
-            if risk_pred_use_latent:
-                model_risk = mlp_time(input_shape=(latent_dim),config=config)
-            if risk_pred_use_feature:
-                model_risk = mlp_time(input_shape=(x_dim),config=config)
-    if config['dataset']=='mammo': 
-        model_xu2y = get_model_time_mammo(input_dim=(x_dim+latent_dim))
-    vae_opt = tf.keras.optimizers.RMSprop(learning_rate=learning_rate)
-    dims = mlc.ConfigDict()
-    dims.x = x_dim
-    dims.y = 1
-    dims.c = c_dim
-    dims.w = w_dim
-    dims.u =  latent_dim
-    dims.t = 1
-    dims.e = 1
-    print(dims)
-    if config['dataset']=='mammo': 
-        base_haz = calculateBaselineHazard(train_d)
-    else: 
-        base_haz = calculateBaselineHazard(sample_data,event_col='event',time_col='time_to_event')
-    evaluate = tf.keras.metrics.BinaryCrossentropy()
-    pos = mlc.ConfigDict()
-    pos.x, pos.y, pos.c, pos.w,pos.t,pos.e= 0, 1, 2, 3, 4, 5 #t # TODO: you can do the swap of tiem to event here by simply swapping out  some vlaues 
-    clf = MethodAblation(encoder, width, vae_opt,
-                    model_x2u, model_risk, 
-                    dims, latent_dim, None,
-                    kl_loss_coef=kl_coeff,
-                    num_classes=num_classes, evaluate=evaluate,
-                    dtype=tf.float32, pos=pos,baselineHazards=base_haz,c_weights=config['c_weights'],w_weights=config['w_weights'],
-                    enc_y_loss=config['enc_y_loss'],apply_latent_adapt=risk_pred_apply_shift,use_features=risk_pred_use_feature,use_latent=risk_pred_use_latent)
     return clf 

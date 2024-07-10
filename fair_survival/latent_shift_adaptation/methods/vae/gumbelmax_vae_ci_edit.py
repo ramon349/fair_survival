@@ -222,6 +222,8 @@ class MethodAblation(baseline.Method):
     x2u_fit_kwargs['epochs'] = fit_kwargs['x2u_epoch']
     x2u_fit_kwargs['validation_steps'] = steps_per_epoch_val
     self.model_x2u.fit(ds_x2u, validation_data=ds_x2u_val,**x2u_fit_kwargs)  # this outputs logits
+    pdb.set_trace() 
+
     print(f"Done training x2u Model")
     # now calibrate
     print("Doing Calibrate")
